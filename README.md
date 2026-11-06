@@ -1,56 +1,86 @@
-# Welcome to your Expo app 👋
+# Thermal
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Thermal is a mobile-first browser and productivity app built with Expo and React Native. It is currently in active alpha, so expect iteration, rough edges, and rapid changes as the browser experience and product direction evolve.
 
-## Get started
+This project is open source under the Apache License 2.0. Contributions, bug reports, and design feedback are welcome.
 
-1. Install dependencies
+## Project status
 
-   ```bash
-   npm install
-   ```
+- Status: Alpha
+- License: Apache-2.0
+- Stack: Expo, React Native, Expo Router, HeroUI Native
 
-2. Start the app
+## Getting started
 
-   ```bash
-   npx expo start
-   ```
+### Prerequisites
 
-In the output, you'll find options to open the app in a
+- Node.js 20+
+- npm or Bun
+- iOS simulator or Android emulator, or a physical device for native testing
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+### Install dependencies
 
 ```bash
-npm run reset-project
+npm install
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+### Run locally
 
-### Other setup steps
+```bash
+npx expo start
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Then use the Expo dev tools to open the app in:
 
-## Learn more
+- a simulator/emulator
+- a development build
+- Expo Go for quick smoke tests
+- the web preview when needed
 
-To learn more about developing your project with Expo, look at the following resources:
+## Browser architecture
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+The app uses Expo Router for screen navigation and keeps document/browser UI inside the browser-specific components under `src/components/browser`.
 
-## Join the community
+Key areas:
 
-Join our community of developers creating universal apps.
+- `src/app` — route screens and app entry points
+- `src/components/browser` — browser chrome, tab previews, search sheet, new-tab experience
+- `src/components/onboarding` — intro screen and mesh animation
+- `src/hooks` and `src/constants` — shared app logic and theme configuration
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Contributing
+
+We welcome contributors who want to improve the browser experience, polish onboarding, or add new product ideas.
+
+1. Fork the repository and create a feature branch.
+2. Install dependencies with `npm install`.
+3. Work in the relevant area of the app.
+4. Run linting before opening a PR:
+
+   ```bash
+   npx expo lint
+   ```
+
+5. Open a pull request with a clear description of the change and any screenshots or demos if relevant.
+
+## Development notes
+
+- Prefer mobile-first patterns and cross-platform compatibility.
+- Match the existing design language: soft mesh gradients, translucent surfaces, and clear app interactions.
+- Use Expo Router patterns for new screens rather than ad-hoc navigation.
+- If you add native functionality, check the relevant Expo docs and keep the app compatible with the current SDK.
+
+## License
+
+This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for the full terms.
+
+## Resources
+
+- [Expo](https://expo.dev)
+- [Expo Router](https://docs.expo.dev/router/introduction)
+- [React Native](https://reactnative.dev)
+- [HeroUI Native](https://heroui.com)
+
+## Support and feedback
+
+If you find a bug, have a feature idea, or want to discuss the direction of the browser, open an issue or start a discussion in the repository.

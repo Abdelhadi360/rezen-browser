@@ -1,0 +1,13 @@
+diff --git a/node_modules/react-native-worklets/android/src/main/java/com/swmansion/worklets/WorkletsModule.kt b/node_modules/react-native-worklets/android/src/main/java/com/swmansion/worklets/WorkletsModule.kt
+index cd34afe..f53d98f 100644
+--- a/node_modules/react-native-worklets/android/src/main/java/com/swmansion/worklets/WorkletsModule.kt
++++ b/node_modules/react-native-worklets/android/src/main/java/com/swmansion/worklets/WorkletsModule.kt
+@@ -14,7 +14,7 @@ import com.swmansion.worklets.runloop.AnimationFrameCallback
+ import com.swmansion.worklets.runloop.AnimationFrameQueue
+ 
+ @Suppress("KotlinJniMissingFunction")
+-@ReactModule(name = WorkletsModule.NAME, needsEagerInit = true)
++@ReactModule(name = WorkletsModule.NAME, needsEagerInit = false)
+ class WorkletsModule(
+     reactContext: ReactApplicationContext,
+ ) : NativeWorkletsModuleSpec(reactContext),

@@ -1,14 +1,18 @@
 {
   "expo": {
-    "name": "Thermal",
-    "slug": "Thermal",
+    "name": "Rezen",
+    "slug": "rezen",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "thermal",
+    "scheme": "rezen",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.abdelhadi360.Thermal",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +21,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.abdelhadi360.Thermal"
     },
     "web": {
       "output": "server",
@@ -32,11 +37,85 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      "expo-sharing",
+      [
+        "./plugins/with-android-widget-launch",
+        {
+          "widgetNames": [
+            "WhimsicalLogoWidget",
+            "SearchBarWidget"
+          ]
+        }
+      ],
+      [
+        "expo-widgets",
+        {
+          "enableAndroid": true,
+          "widgets": [
+            {
+              "name": "WhimsicalLogoWidget",
+              "displayName": "Whimsical Logo",
+              "description": "Open Rezen search",
+              "ios": null,
+              "android": {
+                "minWidth": 70,
+                "minHeight": 70,
+                "targetCellWidth": 2,
+                "targetCellHeight": 1,
+                "resizeMode": "both",
+                "initialLayout": "src/widgets/whimsical-logo-widget.tsx"
+              }
+            },
+            {
+              "name": "SearchBarWidget",
+              "displayName": "Rezen Search",
+              "description": "Search the web with Rezen",
+              "ios": null,
+              "android": {
+                "minWidth": 210,
+                "minHeight": 70,
+                "targetCellWidth": 3,
+                "targetCellHeight": 1,
+                "resizeMode": "both",
+                "initialLayout": "src/widgets/searchbar-widget.tsx"
+              }
+            }
+          ]
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "ExpoWidgetsTarget",
+                  "bundleIdentifier": "com.abdelhadi360.Thermal.ExpoWidgetsTarget",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.abdelhadi360.Thermal"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "projectId": "70313705-48e8-4771-8835-ec0657f39363"
+      }
+    },
+    "owner": "abdelhadi360"
   }
 }
