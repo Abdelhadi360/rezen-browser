@@ -4,6 +4,13 @@ Rezen Browser is a mobile-first browser and productivity app built with Expo and
 
 This project is open source under the Apache License 2.0. Contributions, bug reports, and design feedback are welcome.
 
+## Preview
+
+<p align="center">
+  <img src="preview1.png" width="48%" />
+  <img src="preview2.png" width="48%" />
+</p>
+
 ## Project status
 
 - Status: Alpha
