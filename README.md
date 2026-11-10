@@ -1,6 +1,6 @@
-# Thermal
+# Rezen Browser
 
-Thermal is a mobile-first browser and productivity app built with Expo and React Native. It is currently in active alpha, so expect iteration, rough edges, and rapid changes as the browser experience and product direction evolve.
+Rezen Browser is a mobile-first browser and productivity app built with Expo and React Native. It is currently in active alpha, so expect iteration, rough edges, and rapid changes as the browser experience and product direction evolve.
 
 This project is open source under the Apache License 2.0. Contributions, bug reports, and design feedback are welcome.
 

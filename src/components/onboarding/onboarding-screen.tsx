@@ -1,28 +1,29 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MeshGradientView } from 'expo-mesh-gradient';
 import { Button } from 'heroui-native';
 import { useEffect, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
-    Easing,
-    useAnimatedStyle,
-    useFrameCallback,
-    useSharedValue,
-    withDelay,
-    withTiming,
+  Easing,
+  useAnimatedStyle,
+  useFrameCallback,
+  useSharedValue,
+  withDelay,
+  withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const ONBOARDING_KEY = 'thermal.onboarding.completed.v1';
+import { MeshGradientView } from '../../../modules/mesh-gradient/src';
+
+const ONBOARDING_KEY = 'rezen.onboarding.completed.v1';
 const INTRO_COLORS = [
-  '#D7E5D5', '#EAF0E6', '#D4E3D1',
-  '#E5EEE1', '#F5F7F1', '#D5E4D2',
-  '#EBF1E8', '#DDE9DA', '#EFF3EA',
+  '#FFFFFF', '#F3F4FF', '#FFFFFF',
+  '#8299F5', '#ECEEFF', '#C9C8FA',
+  '#9BAAF8', '#C8CBFF', '#E6E3FF',
 ];
 const DEFAULT_COLORS = [
-  '#FCFCFA', '#FAFBF7', '#F7F9F2',
-  '#F5F7EF', '#F1F4E9', '#EEF1E5',
-  '#F8F9F4', '#F4F6EE', '#F0F3E8',
+  '#FFFFFF', '#F7F7FF', '#FFFFFF',
+  '#98A9F8', '#EEF0FF', '#D3D0FC',
+  '#BEC9FF', '#DADDFE', '#F0EDFF',
 ];
 const DEFAULT_POINTS = [
   [0, 0], [0.7, 0], [1, 0],
@@ -47,8 +48,8 @@ export function OnboardingScreen({ onFinish }: { onFinish: () => void }) {
   useFrameCallback((frame) => {
     if (frame.timeSincePreviousFrame !== null) {
       elapsedMotion.value += frame.timeSincePreviousFrame;
-      const speed = 1 + Math.exp(-elapsedMotion.value / 2600);
-      meshPhase.value += (frame.timeSincePreviousFrame / 22000) * Math.PI * 2 * speed;
+      const speed = 1 + 1.9 * Math.exp(-elapsedMotion.value / 1800);
+      meshPhase.value += (frame.timeSincePreviousFrame / 18000) * Math.PI * 2 * speed;
     }
   });
 
@@ -64,28 +65,27 @@ export function OnboardingScreen({ onFinish }: { onFinish: () => void }) {
       const elapsed = Date.now() - startedAt;
       const progress = clamp01((elapsed - TRANSITION_DELAY_MS) / TRANSITION_DURATION_MS);
       const transition = easeOutCubic(progress);
-      const phase = ((elapsed + 2600 * (1 - Math.exp(-elapsed / 2600))) / 22000) * Math.PI * 2;
-      const pointMotion = 0.16 * (1 - transition);
+      const phase = ((elapsed + 1900 * (1 - Math.exp(-elapsed / 1500))) / 14500) * Math.PI * 2;
+      const sideMotion = 0.045 + 0.018 * Math.exp(-elapsed / 2200);
 
       setMeshPoints([
         DEFAULT_POINTS[0],
-        [0.7 + Math.sin(phase + 0.7) * pointMotion, 0],
-        DEFAULT_POINTS[2],
-        [0, 0.5 + Math.sin(phase + 2.1) * pointMotion],
-        [0.5 + Math.sin(phase) * pointMotion, 0.5 + Math.cos(phase) * pointMotion],
-        [1, 0.5 + Math.sin(phase + 4.1) * pointMotion],
+        DEFAULT_POINTS[1],
+        [1 - Math.cos(phase + 0.4) * sideMotion, Math.sin(phase + 0.4) * sideMotion],
+        DEFAULT_POINTS[3],
+        DEFAULT_POINTS[4],
+        [1 - Math.cos(phase + 2.1) * sideMotion, 0.5 + Math.sin(phase + 2.1) * sideMotion],
         DEFAULT_POINTS[6],
-        [0.5 + Math.sin(phase + 3.4) * pointMotion, 1],
-        DEFAULT_POINTS[8],
+        DEFAULT_POINTS[7],
+        [1 - Math.cos(phase + 3.8) * sideMotion, 1 + Math.sin(phase + 3.8) * sideMotion],
       ]);
 
       if (progress === 1) {
         setMeshColors(DEFAULT_COLORS);
-        setMeshPoints(DEFAULT_POINTS);
-        return;
+      } else {
+        setMeshColors(INTRO_COLORS.map((color, index) => blendColor(color, DEFAULT_COLORS[index], transition)));
       }
 
-      setMeshColors(INTRO_COLORS.map((color, index) => blendColor(color, DEFAULT_COLORS[index], transition)));
       frameId = requestAnimationFrame(animateMesh);
     };
 
@@ -107,10 +107,10 @@ export function OnboardingScreen({ onFinish }: { onFinish: () => void }) {
 
     return {
       transform: [
-        { translateX: Math.sin(phase) * width * (0.004 + (1 - zoomProgress) * 0.04) },
-        { translateY: Math.cos(phase * 0.8) * height * (0.004 + (1 - zoomProgress) * 0.035) },
-        { rotate: `${Math.sin(phase * 0.52) * (0.12 + (1 - zoomProgress) * 2.3)}deg` },
-        { scale: 1.002 + (1 - zoomProgress) * 0.48 + Math.sin(phase * 0.7) * 0.002 },
+        { translateX: Math.sin(phase) * width * (0.009 + (1 - zoomProgress) * 0.055) },
+        { translateY: Math.cos(phase * 0.8) * height * (0.009 + (1 - zoomProgress) * 0.05) },
+        { rotate: `${Math.sin(phase * 0.52) * (0.24 + (1 - zoomProgress) * 2.8)}deg` },
+        { scale: 1.04 + (1 - zoomProgress) * 0.58 + Math.sin(phase * 0.7) * 0.006 },
       ],
     };
   }, [height, width]);
@@ -158,23 +158,19 @@ export function OnboardingScreen({ onFinish }: { onFinish: () => void }) {
 const styles = StyleSheet.create({
   root: { flex: 1, overflow: 'hidden', backgroundColor: '#FFFFFF' },
   meshReveal: { position: 'absolute', overflow: 'hidden', backgroundColor: '#FFFFFF' },
-  startButtonWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
+  startButtonWrap: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 28 },
   startButton: {
-    minWidth: 170,
-    minHeight: 56,
+    width: '100%',
+    minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.8)',
+    borderRadius: 16,
+    borderWidth: 0,
     backgroundColor: '#FFFFFF',
-    shadowColor: '#26382B',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    elevation: 8,
+    shadowOpacity: 0,
+    elevation: 0,
   },
-  startLabel: { color: '#1F2B23', fontSize: 17, fontWeight: '700' },
+  startLabel: { color: '#343BFF', fontSize: 17, fontWeight: '700' },
 });
 
 function clamp01(value: number) {

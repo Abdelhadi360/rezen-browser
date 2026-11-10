@@ -11,7 +11,7 @@ const SearchBarWidget = () => {
       onClick={() => undefined}
       colors={{ containerColor: '#F1F2EF', contentColor: '#777D80' }}
       modifiers={[fillMaxSize(), padding(16, 0, 16, 0)]}>
-      <Text color="#777D80" style={{ fontSize: 15 }}>⌕  Search or enter an address</Text>
+      <Text color="#777D80" style={{ fontSize: 15 }}>Search or enter an address</Text>
     </Button>
   );
 };

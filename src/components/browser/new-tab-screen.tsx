@@ -1,5 +1,4 @@
 import { Image } from 'expo-image';
-import { MeshGradientView } from 'expo-mesh-gradient';
 import { router } from 'expo-router';
 import { BottomSheet, Button } from 'heroui-native';
 import { PanelsTopLeft, Plus, Settings } from 'lucide-react-native';
@@ -9,14 +8,15 @@ import { Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { MeshGradientView } from '../../../modules/mesh-gradient/src';
 import type { SearchProviderId } from './search-provider-picker';
 import { SearchProviderPicker, type SearchProvider } from './search-provider-picker';
 import type { BrowserTab } from './types';
 
 const GRADIENT_COLORS = [
-  '#FCFCFA', '#FAFBF7', '#F7F9F2',
-  '#F5F7EF', '#F1F4E9', '#EEF1E5',
-  '#F8F9F4', '#F4F6EE', '#F0F3E8',
+  '#FBF9FF', '#F8F5FF', '#F4F3FF',
+  '#F7F0FA', '#F2F1FC', '#EDF4FC',
+  '#FFF4F4', '#F7F1FA', '#EEF5FC',
 ];
 
 const GRADIENT_POINTS = [
