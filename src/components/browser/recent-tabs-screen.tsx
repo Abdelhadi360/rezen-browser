@@ -1,9 +1,9 @@
 import { Image } from 'expo-image';
 import { Button } from 'heroui-native';
-import type { ComponentProps } from 'react';
-import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { useState, type ComponentProps } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { LinearTransition, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { BrowserGlyph } from './browser-icons';
 import type { BrowserTab } from './types';
@@ -14,10 +14,12 @@ type RecentTabsScreenProps = {
   screenWidth: number;
   cardWidth: number;
   cardHeight: number;
+  transitioning: boolean;
   topInset: number;
   bottomInset: number;
   onScroll: ComponentProps<typeof Animated.ScrollView>['onScroll'];
   onSelect: (tab: BrowserTab) => void;
+  onCloseTab: (tabId: string) => void;
   onNewTab: () => void;
   onDone: () => void;
   onCloseAll: () => void;
@@ -29,15 +31,20 @@ export function RecentTabsScreen({
   screenWidth,
   cardWidth,
   cardHeight,
+  transitioning,
   topInset,
   bottomInset,
   onScroll,
   onSelect,
+  onCloseTab,
   onNewTab,
   onDone,
   onCloseAll,
 }: RecentTabsScreenProps) {
-  const contentPadding = useMemo(() => (screenWidth - cardWidth) / 2, [screenWidth, cardWidth]);
+  const [centeredIndex, setCenteredIndex] = useState(0);
+  const itemWidth = Math.min(cardWidth, screenWidth - 40);
+  const sideInset = (screenWidth - itemWidth) / 2;
+  const snapInterval = itemWidth * 0.62;
 
   return (
     <View style={styles.root}>
@@ -64,27 +71,34 @@ export function RecentTabsScreen({
         ) : (
           <Animated.ScrollView
             horizontal
-            style={styles.carousel}
-            contentContainerStyle={[styles.carouselContent, { paddingHorizontal: contentPadding }]}
+            style={styles.stack}
+            contentContainerStyle={styles.stackContent}
             showsHorizontalScrollIndicator={false}
-            snapToInterval={cardWidth + 16}
-            decelerationRate="fast"
-            disableIntervalMomentum
+            showsVerticalScrollIndicator={false}
+            bounces={false}
             onScroll={onScroll}
+            onMomentumScrollEnd={(event) => setCenteredIndex(Math.round(event.nativeEvent.contentOffset.x / snapInterval))}
             scrollEventThrottle={16}
+            decelerationRate="fast"
+            snapToInterval={snapInterval}
+            snapToAlignment="start"
             keyboardShouldPersistTaps="handled">
-            {recentTabs.map((tab) => (
-              <Button
+            <View style={{ width: sideInset }} />
+            {recentTabs.map((tab, index) => (
+              <RecentTabCard
                 key={tab.id}
-                variant="ghost"
-                size="sm"
-                accessibilityLabel={`Open ${tab.title}`}
-                onPress={() => onSelect(tab)}
-                style={[styles.tabWindow, { width: cardWidth, height: cardHeight, backgroundColor: safePageColor(tab.pageSurfaceColor ?? '#F3F4F5') }]}
-              >
-                {tab.thumbnail ? <Image source={{ uri: tab.thumbnail }} style={StyleSheet.absoluteFill} contentFit="cover" /> : null}
-              </Button>
+                tab={tab}
+                index={index}
+                count={recentTabs.length}
+                centeredIndex={centeredIndex}
+                transitioning={transitioning}
+                width={itemWidth}
+                height={cardHeight}
+                onSelect={onSelect}
+                onClose={onCloseTab}
+              />
             ))}
+            <View style={{ width: sideInset }} />
           </Animated.ScrollView>
         )}
         <View style={styles.footer}>
@@ -105,6 +119,74 @@ export function RecentTabsScreen({
         </View>
       </View>
     </View>
+  );
+}
+
+function RecentTabCard({
+  tab,
+  index,
+  count,
+  centeredIndex,
+  transitioning,
+  width,
+  height,
+  onSelect,
+  onClose,
+}: {
+  tab: BrowserTab;
+  index: number;
+  count: number;
+  centeredIndex: number;
+  transitioning: boolean;
+  width: number;
+  height: number;
+  onSelect: (tab: BrowserTab) => void;
+  onClose: (tabId: string) => void;
+}) {
+  const translateY = useSharedValue(0);
+  const opacity = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: translateY.value }],
+  }));
+  const swipeToClose = Gesture.Pan()
+    .activeOffsetY(-10)
+    .failOffsetX([-20, 20])
+    .onUpdate((event) => {
+      translateY.value = Math.min(0, event.translationY);
+      opacity.value = Math.max(0.35, 1 + event.translationY / height);
+    })
+    .onEnd((event) => {
+      if (event.translationY < -72 || event.velocityY < -700) {
+        translateY.value = withTiming(-height, { duration: 180 }, (finished) => {
+          if (finished) runOnJS(onClose)(tab.id);
+        });
+        opacity.value = withTiming(0, { duration: 160 });
+      } else {
+        translateY.value = withTiming(0, { duration: 160 });
+        opacity.value = withTiming(1, { duration: 160 });
+      }
+    });
+
+  return (
+    <GestureDetector gesture={swipeToClose}>
+      <Animated.View
+        layout={LinearTransition.duration(180)}
+        style={[
+          styles.tabWindow,
+          animatedStyle,
+          { width, height, zIndex: index === centeredIndex ? count + 1 : count - Math.abs(index - centeredIndex), marginRight: index === count - 1 ? 0 : -width * 0.38, opacity: transitioning ? 0 : undefined },
+        ]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${tab.title}`}
+          onPress={() => onSelect(tab)}
+          style={[styles.tabPreview, { backgroundColor: safePageColor(tab.pageSurfaceColor ?? '#F3F4F5') }]}>
+          {tab.thumbnail ? <Image source={{ uri: tab.thumbnail }} style={StyleSheet.absoluteFill} contentFit="cover" /> : null}
+          <View style={styles.tabTitle}><Text numberOfLines={1} style={styles.tabTitleText}>{tab.title}</Text></View>
+        </Pressable>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
@@ -139,9 +221,12 @@ const styles = StyleSheet.create({
   subtitle: { marginTop: 3, color: '#777D82', fontSize: 12 },
   actions: { flexDirection: 'row', gap: 6 },
   iconButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F2F3' },
-  carousel: { flex: 1 },
-  carouselContent: { flexGrow: 1, alignItems: 'center', gap: 16 },
-  tabWindow: { overflow: 'hidden', padding: 0, marginRight: 0, borderRadius: 24, backgroundColor: 'transparent' },
+  stack: { flex: 1 },
+  stackContent: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16 },
+  tabWindow: { overflow: 'hidden', borderRadius: 24, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E4E6E8', elevation: 4, shadowColor: '#252B31', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.14, shadowRadius: 12 },
+  tabPreview: { flex: 1, overflow: 'hidden', borderRadius: 23 },
+  tabTitle: { position: 'absolute', top: 10, left: 10, right: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.88)' },
+  tabTitleText: { color: '#30353A', fontSize: 12, fontWeight: '600' },
   emptyTabs: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   emptyTabsMark: { width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ECEDEF' },
   emptyTabsTitle: { color: '#353A3F', fontSize: 15, fontWeight: '600' },

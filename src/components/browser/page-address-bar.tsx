@@ -1,7 +1,9 @@
+import { BlurView } from 'expo-blur';
 import { BottomSheet, Button, type PopoverTriggerRef } from 'heroui-native';
 import type { ComponentRef, RefObject } from 'react';
-import { ActivityIndicator, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, TextInput, View } from 'react-native';
 
+import { useSheetAppearance } from '../../hooks/sheet-appearance';
 import { BrowserGlyph } from './browser-icons';
 import { WebsiteColorControls, type WebsiteColorTarget } from './page-color-controls';
 import type { SearchProviderId } from './search-provider-picker';
@@ -76,10 +78,14 @@ export function PageAddressBar({
   onColorChange,
   onColorReset,
 }: PageAddressBarProps) {
+  const { appearance } = useSheetAppearance();
+  const useBlur = appearance === 'blur';
+
   return (
     <View style={[styles.address, { backgroundColor: pageBarColor }]}>
       <SearchProviderPicker
         providerId={selectedProvider}
+        blurTargetRef={blurTargetRef}
         isOpen={providerPopoverOpen}
         onOpenChange={onProviderPopoverChange}
         triggerRef={providerTriggerRef}
@@ -133,7 +139,17 @@ export function PageAddressBar({
             snapPoints={['90%']}
             enableDynamicSizing={false}
             contentContainerClassName="h-full"
-            backgroundClassName="rounded-t-[28px]">
+            backgroundClassName={Platform.OS === 'android' && useBlur ? 'rounded-t-[28px] bg-transparent' : 'rounded-t-[28px]'}>
+            {Platform.OS === 'android' && useBlur ? (
+              <BlurView
+                blurTarget={blurTargetRef}
+                blurMethod="dimezisBlurViewSdk31Plus"
+                intensity={72}
+                tint="light"
+                pointerEvents="none"
+                style={StyleSheet.absoluteFill}
+              />
+            ) : null}
             <View style={styles.sheetContent}>
               <View style={styles.sheetHeader}>
                 <BottomSheet.Title style={styles.sheetTitle}>Page appearance</BottomSheet.Title>

@@ -23,9 +23,6 @@ import expo.modules.kotlin.views.ComposableScope
 import expo.modules.kotlin.views.ComposeProps
 import expo.modules.kotlin.views.ExpoComposeView
 import expo.modules.kotlin.views.OptimizedComposeProps
-import kotlin.math.cos
-import kotlin.math.PI
-import kotlin.math.sin
 
 @OptimizedComposeProps
 data class MeshGradientViewProps(
@@ -54,10 +51,9 @@ class MeshGradientView(context: Context, appContext: AppContext) :
     Canvas(Modifier.fillMaxSize()) {
       if (rows < 2 || columns < 2 || colors.size < rows * columns) return@Canvas
 
-      val subdivisions = if (smoothsColors) 8 else 1
+      val subdivisions = if (smoothsColors) 32 else 1
       val meshRows = (rows - 1) * subdivisions + 1
       val meshColumns = (columns - 1) * subdivisions + 1
-      val phase = progress.value * 2f * PI.toFloat()
       val positions = ArrayList<Offset>(meshRows * meshColumns)
       val vertexColors = ArrayList<Color>(meshRows * meshColumns)
       val indices = ArrayList<Int>((meshRows - 1) * (meshColumns - 1) * 6)
@@ -66,10 +62,7 @@ class MeshGradientView(context: Context, appContext: AppContext) :
         val index = row * columns + column
         val point = points.getOrNull(index)
           ?: Pair(column / (columns - 1).toFloat(), row / (rows - 1).toFloat())
-        val moves = row in 1 until rows - 1 && column in 1 until columns - 1
-        val xOffset = if (moves) sin(phase + index) * 0.07f else 0f
-        val yOffset = if (moves) cos(phase * 0.8f + index) * 0.07f else 0f
-        return Offset(point.first + xOffset, point.second + yOffset)
+        return Offset(point.first, point.second)
       }
 
       fun colorAt(row: Int, column: Int) = Color(colors[row * columns + column])

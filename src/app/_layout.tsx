@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import '../global.css';
+import { SheetAppearanceProvider } from '../hooks/sheet-appearance';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -24,12 +25,14 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <HeroUINativeProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <StatusBar style="dark" />
-          <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />
-        </ThemeProvider>
-      </HeroUINativeProvider>
+      <SheetAppearanceProvider>
+        <HeroUINativeProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <StatusBar style="dark" />
+            <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />
+          </ThemeProvider>
+        </HeroUINativeProvider>
+      </SheetAppearanceProvider>
     </GestureHandlerRootView>
   );
 }

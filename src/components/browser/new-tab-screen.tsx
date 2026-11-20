@@ -1,14 +1,16 @@
+import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { BottomSheet, Button } from 'heroui-native';
 import { PanelsTopLeft, Plus, Settings } from 'lucide-react-native';
 import type { ComponentProps, ComponentRef } from 'react';
 import { useEffect, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Keyboard, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MeshGradientView } from '../../../modules/mesh-gradient/src';
+import { useSheetAppearance } from '../../hooks/sheet-appearance';
 import type { SearchProviderId } from './search-provider-picker';
 import { SearchProviderPicker, type SearchProvider } from './search-provider-picker';
 import type { BrowserTab } from './types';
@@ -27,6 +29,7 @@ const GRADIENT_POINTS = [
 
 type NewTabScreenProps = {
   motionStyle: ComponentProps<typeof Animated.View>['style'];
+  blurTargetRef: React.RefObject<ComponentRef<typeof View> | null>;
   recentTabs: BrowserTab[];
   onOpenRecentTabs: () => void;
   onSelectRecentTab: (tab: BrowserTab) => void;
@@ -47,6 +50,7 @@ type NewTabScreenProps = {
 
 export function NewTabScreen({
   motionStyle,
+  blurTargetRef,
   recentTabs,
   onOpenRecentTabs,
   onSelectRecentTab,
@@ -65,6 +69,8 @@ export function NewTabScreen({
   onCancelProviderSearch,
 }: NewTabScreenProps) {
   const insets = useSafeAreaInsets();
+  const { appearance } = useSheetAppearance();
+  const useBlur = appearance === 'blur' && Platform.OS === 'android';
   const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
 
   useEffect(() => {
@@ -134,7 +140,17 @@ export function NewTabScreen({
               enableDynamicSizing={false}
               keyboardBehavior="interactive"
               contentContainerClassName="h-full px-5 pt-[18px]"
-              backgroundClassName="rounded-t-[28px]">
+              backgroundClassName={useBlur ? 'rounded-t-[28px] bg-transparent' : 'rounded-t-[28px]'}>
+              {useBlur ? (
+                <BlurView
+                  blurTarget={blurTargetRef}
+                  blurMethod="dimezisBlurViewSdk31Plus"
+                  intensity={72}
+                  tint="light"
+                  pointerEvents="none"
+                  style={StyleSheet.absoluteFill}
+                />
+              ) : null}
               <View style={styles.searchField}>
                 <TextInput
                   ref={addressInputRef}
@@ -158,6 +174,7 @@ export function NewTabScreen({
                 />
                 <SearchProviderPicker
                   providerId={providerId}
+                  blurTargetRef={blurTargetRef}
                   isOpen={providerPopoverOpen}
                   onOpenChange={onProviderPopoverChange}
                   triggerRef={providerTriggerRef}
@@ -188,11 +205,11 @@ const styles = StyleSheet.create({
   homeScreen: { flex: 1, overflow: 'hidden', backgroundColor: '#F7F7F2' },
   bottomBar: { position: 'absolute', left: '14%', right: '14%', height: 88, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   tabStack: { width: 66, height: 70, position: 'relative' },
-  tabPreview: { position: 'absolute', width: 43, height: 60, overflow: 'hidden', borderWidth: 3, borderColor: '#FFFFFF', borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.76)', shadowColor: '#433A5D', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.14, shadowRadius: 6, elevation: 3 },
+  tabPreview: { position: 'absolute', width: 43, height: 60, overflow: 'hidden', borderWidth: 3, borderColor: '#FFFFFF', borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.76)', shadowOpacity: 0, elevation: 0 },
   backTabPreview: { left: 18, top: 1, transform: [{ rotate: '10deg' }] },
   frontTabPreview: { left: 2, top: 8, transform: [{ rotate: '-9deg' }] },
   emptyTabPreview: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.42)' },
-  newTabButton: { width: 88, height: 50, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 28, borderWidth: 2, borderColor: 'rgba(255,255,255,0.96)', backgroundColor: 'rgba(255,255,255,0.9)', shadowColor: '#645873', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 14, elevation: 4 },
+  newTabButton: { width: 88, height: 50, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 25, borderWidth: 2, borderColor: 'rgba(255,255,255,0.96)', backgroundColor: 'rgba(255,255,255,0.9)', shadowOpacity: 0, elevation: 0 },
   settingsButton: { width: 56, height: 64, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.65 },
   sheetOverlay: { backgroundColor: 'rgba(37, 34, 47, 0.58)' },

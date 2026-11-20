@@ -5,6 +5,7 @@ import { ArrowRight, ChevronLeft } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSheetAppearance, type SheetAppearance } from '../hooks/sheet-appearance';
 
 const SEARCH_ENGINE_KEY = 'thermal.browser.search-engine.v1';
 const SEARCH_ENGINES = ['Google', 'DuckDuckGo', 'Bing'] as const;
@@ -12,6 +13,7 @@ type SearchEngine = (typeof SEARCH_ENGINES)[number];
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const { appearance, setAppearance } = useSheetAppearance();
   const [searchEngine, setSearchEngine] = useState<SearchEngine>('Google');
 
   useEffect(() => {
@@ -60,6 +62,27 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Panels</Text>
+        <Text style={styles.description}>Choose the background used by sheets and popovers.</Text>
+        <RadioGroup
+          value={appearance}
+          onValueChange={(value) => {
+            if (value === 'normal' || value === 'blur') setAppearance(value as SheetAppearance);
+          }}
+          style={styles.options}>
+          {(['normal', 'blur'] as const).map((option, index) => (
+            <RadioGroup.Item
+              key={option}
+              value={option}
+              style={[styles.option, index === 1 && styles.lastOption, appearance === option && styles.optionSelected]}>
+              <Label>{option === 'normal' ? 'Normal' : 'Blur (experimental)'}</Label>
+              <Radio />
+            </RadioGroup.Item>
+          ))}
+        </RadioGroup>
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Appearance</Text>
         <Button
           variant="secondary"
@@ -82,8 +105,9 @@ const styles = StyleSheet.create({
   section: { marginTop: 31 },
   sectionTitle: { color: '#353A3F', fontSize: 13, fontWeight: '700' },
   description: { marginTop: 5, marginBottom: 13, color: '#7A8085', fontSize: 12, lineHeight: 18 },
-  options: { overflow: 'hidden', borderRadius: 17, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7E9' },
-  option: { minHeight: 53, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E9EAEC' },
+  options: { overflow: 'hidden', flexDirection: 'column', gap: 0, borderRadius: 17, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7E9' },
+  option: { height: 53, minHeight: 53, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E9EAEC' },
+  lastOption: { borderBottomWidth: 0 },
   optionSelected: { backgroundColor: '#F7F8F9' },
   optionText: { color: '#62686D', fontSize: 14 },
   optionTextSelected: { color: '#30353A', fontWeight: '600' },

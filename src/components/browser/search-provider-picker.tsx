@@ -1,7 +1,11 @@
+import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { Button, Popover, type PopoverTriggerRef } from 'heroui-native';
 import { ScanSearch, X } from 'lucide-react-native';
-import { StyleSheet, Text, View } from 'react-native';
+import type { ComponentRef, RefObject } from 'react';
+import { Platform, StyleSheet, Text, View } from 'react-native';
+
+import { useSheetAppearance } from '../../hooks/sheet-appearance';
 
 export type SearchProviderId = 'google' | 'bing' | 'duckduckgo' | 'wikipedia' | 'perplexity' | 'chatgpt';
 export type SearchProvider = { id: SearchProviderId; name: string; domain: string };
@@ -29,6 +33,7 @@ export function searchProviderUrl(query: string, providerId: SearchProviderId) {
 
 export function SearchProviderPicker({
   providerId,
+  blurTargetRef,
   isOpen,
   onOpenChange,
   triggerRef,
@@ -39,6 +44,7 @@ export function SearchProviderPicker({
   compact = false,
 }: {
   providerId: SearchProviderId | null;
+  blurTargetRef: RefObject<ComponentRef<typeof View> | null>;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   triggerRef: React.RefObject<PopoverTriggerRef | null>;
@@ -48,6 +54,8 @@ export function SearchProviderPicker({
   placement: 'top' | 'bottom';
   compact?: boolean;
 }) {
+  const { appearance } = useSheetAppearance();
+  const useBlur = appearance === 'blur' && Platform.OS === 'android';
   const provider = SEARCH_PROVIDERS.find((item) => item.id === providerId);
   return (
     <Popover isOpen={isOpen} onOpenChange={onOpenChange}>
@@ -76,8 +84,20 @@ export function SearchProviderPicker({
           avoidCollisions
           width={250}
           background={null}
-          style={styles.providerPopover}>
-          <ProviderRecommendations query={query} onChoose={onChoose} />
+          style={useBlur ? { ...styles.providerPopover, ...styles.transparentPopover } : styles.providerPopover}>
+          {useBlur ? (
+            <BlurView
+              blurTarget={blurTargetRef}
+              blurMethod="dimezisBlurViewSdk31Plus"
+              intensity={72}
+              tint="light"
+              pointerEvents="none"
+              style={StyleSheet.absoluteFill}
+            />
+          ) : null}
+          <View style={styles.popoverContent}>
+            <ProviderRecommendations query={query} onChoose={onChoose} />
+          </View>
         </Popover.Content>
       </Popover.Portal>
     </Popover>
@@ -120,6 +140,8 @@ const styles = StyleSheet.create({
   compactBadge: { minWidth: 28, maxWidth: 94, height: 28, gap: 4, paddingHorizontal: 4, borderRadius: 14 },
   providerLabel: { fontSize: 12 },
   providerPopover: { backgroundColor: '#FFFFFF', zIndex: 50 },
+  transparentPopover: { overflow: 'hidden', backgroundColor: 'transparent' },
+  popoverContent: { zIndex: 1 },
   recommendations: { gap: 2 },
   providerOption: { minHeight: 42, flexDirection: 'row', justifyContent: 'flex-start', gap: 10, paddingHorizontal: 10, borderRadius: 10 },
   noResults: { paddingHorizontal: 10, paddingVertical: 12, color: '#747A80', fontSize: 13 },

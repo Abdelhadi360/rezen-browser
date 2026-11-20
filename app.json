@@ -2,7 +2,7 @@
   "expo": {
     "name": "Rezen",
     "slug": "rezen",
-    "version": "0.1.0",
+    "version": "0.0.2-alpha",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "rezen",

@@ -8,6 +8,7 @@ import type { ComponentRef } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import {
     Keyboard,
+    Linking,
     Platform,
     Pressable,
     StyleSheet,
@@ -18,6 +19,7 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+    Easing,
     runOnJS,
     useAnimatedScrollHandler,
     useAnimatedStyle,
@@ -30,6 +32,7 @@ import { captureRef } from 'react-native-view-shot';
 import WebView, { type WebViewMessageEvent, type WebViewNavigation, type WebViewProps } from 'react-native-webview';
 
 import { BrowserGlyph } from './browser-icons';
+import { FontInfoSheet, type FontSelectionInfo } from './font-info-sheet';
 import { NewTabScreen } from './new-tab-screen';
 import { PageAddressBar } from './page-address-bar';
 import type { WebsiteColorTarget } from './page-color-controls';
@@ -40,7 +43,6 @@ import { LinkPreviewOverlay, SplitViewPane, WebContextMenu, type PreviewRect, ty
 
 const STORAGE_KEY = 'thermal.browser.tabs.v1';
 const SEARCH_ENGINE_KEY = 'thermal.browser.search-engine.v1';
-const PAGE_SCALE_SPRING = { damping: 30, stiffness: 220, mass: 1, overshootClamping: true };
 type SearchEngine = 'Google' | 'DuckDuckGo' | 'Bing';
 
 function makeWebsiteColorScript(backgroundColor: string | null, textColor: string | null) {
@@ -129,7 +131,7 @@ const scrollScript = `
     var activeEdge = '';
     var lastColors = '';
     var pinchStartDistance = 0;
-    var recentGestureSent = false;
+    var recentPinchProgress = 0;
     function resolveColor(value) {
       var probe = document.createElement('span');
       probe.style.color = value || '';
@@ -196,7 +198,7 @@ const scrollScript = `
         var deltaX = secondTouch.clientX - firstTouch.clientX;
         var deltaY = secondTouch.clientY - firstTouch.clientY;
         pinchStartDistance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-        recentGestureSent = false;
+        recentPinchProgress = 0;
         activeEdge = '';
         return;
       }
@@ -213,9 +215,9 @@ const scrollScript = `
         var deltaX = secondTouch.clientX - firstTouch.clientX;
         var deltaY = secondTouch.clientY - firstTouch.clientY;
         var distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-        if (!recentGestureSent && distance < pinchStartDistance * 0.72) {
-          recentGestureSent = true;
-          window.ReactNativeWebView.postMessage('recent-pinch-out');
+        if (distance < pinchStartDistance) {
+          recentPinchProgress = Math.max(0, Math.min(1, (pinchStartDistance - distance) / (pinchStartDistance * 0.55)));
+          window.ReactNativeWebView.postMessage('recent-pinch-progress:' + recentPinchProgress);
         }
         return;
       }
@@ -245,7 +247,7 @@ const scrollScript = `
       if (!node || !node.closest) return null;
       var image = node.closest('img');
       var anchor = node.closest('a');
-      if (node === document.body || node === document.documentElement) return null;
+      if (!image && !anchor) return null;
       return { node: node, image: image, anchor: anchor };
     }
     function sendContextTarget(event, target) {
@@ -292,11 +294,65 @@ const scrollScript = `
     }, { passive: true, capture: true });
     document.addEventListener('touchcancel', clearContextTimer, { passive: true, capture: true });
     document.addEventListener('contextmenu', function(event) {
+      var selection = window.getSelection();
+      if (selection && !selection.isCollapsed) return;
       var target = findContextTarget(event);
       if (!target) return;
       event.preventDefault();
       if (!contextTriggered) sendContextTarget(event, target);
     }, true);
+    var selectionTimer = null;
+    function sendSelectionFont() {
+      var selection = window.getSelection();
+      if (!selection || selection.isCollapsed || !selection.rangeCount) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'selection-font', font: null }));
+        return;
+      }
+      var range = selection.getRangeAt(0);
+      var node = range.commonAncestorContainer;
+      var element = node.nodeType === 1 ? node : node.parentElement;
+      if (!element) return;
+      var computed = getComputedStyle(element);
+      var family = computed.fontFamily.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+      var variants = [];
+      if (document.fonts && document.fonts.forEach) {
+        document.fonts.forEach(function(face) {
+          var faceFamily = face.family.replace(/^['"]|['"]$/g, '');
+          if (faceFamily.toLowerCase() !== family.toLowerCase()) return;
+          var weights = face.weight.split(/\s+/);
+          var start = Number(weights[0]);
+          var end = Number(weights[1]);
+          if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+            for (var weight = start; weight <= end; weight += 100) variants.push({ weight: String(weight), style: face.style });
+          } else {
+            variants.push({ weight: face.weight, style: face.style });
+          }
+        });
+      }
+      variants.push({ weight: computed.fontWeight, style: computed.fontStyle });
+      var uniqueVariants = variants.filter(function(variant, index, list) {
+        return list.findIndex(function(candidate) {
+          return candidate.weight === variant.weight && candidate.style === variant.style;
+        }) === index;
+      });
+      var rect = range.getBoundingClientRect();
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'selection-font',
+        font: {
+          family: family,
+          weight: computed.fontWeight,
+          style: computed.fontStyle,
+          text: selection.toString().slice(0, 180),
+          variants: uniqueVariants
+        },
+        x: rect.left,
+        y: rect.bottom
+      }));
+    }
+    document.addEventListener('selectionchange', function() {
+      clearTimeout(selectionTimer);
+      selectionTimer = setTimeout(sendSelectionFont, 90);
+    });
     document.addEventListener('click', function(event) {
       if (Date.now() >= suppressClickUntil) return;
       event.preventDefault();
@@ -304,9 +360,12 @@ const scrollScript = `
       suppressClickUntil = 0;
     }, true);
     document.addEventListener('touchend', function(event) {
+      if (pinchStartDistance > 0 && event.touches.length < 2) {
+        window.ReactNativeWebView.postMessage('recent-pinch-end:' + recentPinchProgress);
+      }
       if (event.touches.length < 2) {
         pinchStartDistance = 0;
-        recentGestureSent = false;
+        recentPinchProgress = 0;
       }
       if (event.touches.length === 0) releasePull();
     }, { passive: true });
@@ -394,6 +453,7 @@ export function BrowserScreen() {
   const [addressDraft, setAddressDraft] = useState('');
   const [isEditingAddress, setIsEditingAddress] = useState(false);
   const [isTabOverviewOpen, setIsTabOverviewOpen] = useState(false);
+  const [isRecentTransitioning, setIsRecentTransitioning] = useState(false);
   const [isPreviewTransitioning, setIsPreviewTransitioning] = useState(false);
   const [transitionPreview, setTransitionPreview] = useState<string | null>(null);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
@@ -401,6 +461,8 @@ export function BrowserScreen() {
   const [canGoForward, setCanGoForward] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [contextTarget, setContextTarget] = useState<WebContextTarget | null>(null);
+  const [fontSelection, setFontSelection] = useState<{ font: FontSelectionInfo; x: number; y: number } | null>(null);
+  const [isFontInfoOpen, setIsFontInfoOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewAnchor, setPreviewAnchor] = useState<{ x: number; y: number } | null>(null);
   const [previewSourceRect, setPreviewSourceRect] = useState<PreviewRect | null>(null);
@@ -560,7 +622,7 @@ export function BrowserScreen() {
   }, [activeTabId]);
 
   useEffect(() => {
-    if (!isTabOverviewOpen) pageScale.value = withSpring(1, PAGE_SCALE_SPRING);
+    if (!isTabOverviewOpen) pageScale.value = withTiming(1, { duration: 280, easing: Easing.out(Easing.cubic) });
   }, [activeTabId, isTabOverviewOpen, pageScale]);
 
   function openTab(url: string | null) {
@@ -605,63 +667,40 @@ export function BrowserScreen() {
     setChromeVisible(true);
   }
 
-  async function showRecentTabs() {
-    minimizePageToRecentTabs();
-  }
-
   function closeRecentTabs() {
     webViewRef.current?.injectJavaScript(resumePageScript);
     setIsPreviewTransitioning(false);
     setTransitionPreview(null);
     isOpeningOverview.current = false;
     setIsTabOverviewOpen(false);
+    setIsRecentTransitioning(false);
     setChromeVisible(true);
     recentScrollX.value = 0;
   }
 
-  async function minimizePageToRecentTabs() {
+  function minimizePageToRecentTabs(duration = 260) {
     if (isOpeningOverview.current || isTabOverviewOpen) return;
     isOpeningOverview.current = true;
     Keyboard.dismiss();
-    if (webViewRef.current) {
-      if (isLoading) {
-        await new Promise<void>((resolve) => {
-          let timeout: ReturnType<typeof setTimeout>;
-          const acknowledgeLoad = () => {
-            clearTimeout(timeout);
-            if (pageLoadAcknowledgement.current === acknowledgeLoad) pageLoadAcknowledgement.current = null;
-            resolve();
-          };
-          pageLoadAcknowledgement.current = acknowledgeLoad;
-          timeout = setTimeout(acknowledgeLoad, 12000);
-        });
-      }
-      const preview = await captureCurrentTab();
-      const fallbackPreview = activeTab?.thumbnail;
-      if (!preview && !fallbackPreview) {
-        isOpeningOverview.current = false;
-        setChromeVisible(true);
-        return;
-      }
-      setTransitionPreview(preview ?? fallbackPreview ?? null);
-      setIsPreviewTransitioning(true);
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    }
-    await new Promise<void>((resolve) => {
-      const finishTransition = () => {
-        recentScrollX.value = 0;
-        setChromeVisible(false);
-        setIsTabOverviewOpen(true);
-        setIsPreviewTransitioning(false);
-        setTransitionPreview(null);
-        isOpeningOverview.current = false;
-        requestAnimationFrame(() => webViewRef.current?.injectJavaScript(freezePageScript));
-        resolve();
-      };
-      pageScale.value = withSpring(recentCardScale, PAGE_SCALE_SPRING, () => {
-        runOnJS(finishTransition)();
-      });
+    setChromeVisible(false);
+    setIsPreviewTransitioning(false);
+    setTransitionPreview(null);
+    setIsRecentTransitioning(true);
+    setIsTabOverviewOpen(true);
+    recentScrollX.value = 0;
+    isOpeningOverview.current = false;
+    pageScale.value = withTiming(recentCardScale, { duration, easing: Easing.out(Easing.cubic) }, (finished) => {
+      if (finished) runOnJS(setIsRecentTransitioning)(false);
     });
+    if (activeTabId) void captureCurrentTab(activeTabId);
+  }
+
+  function finishPinchToRecentTabs(progress: number) {
+    if (progress >= 0.42) {
+      minimizePageToRecentTabs(120);
+    } else {
+      pageScale.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
+    }
   }
 
   async function returnHome() {
@@ -673,6 +712,26 @@ export function BrowserScreen() {
 
   function selectRecentTab(tab: BrowserTab) {
     finishTabSelection(tab.id);
+  }
+
+  function closeRecentTab(tabId: string) {
+    const remainingTabs = tabs.filter((tab) => tab.id !== tabId);
+    setTabs(remainingTabs);
+    if (tabId === activeTabId) setActiveTabId(remainingTabs[0]?.id ?? null);
+  }
+
+  async function openSelectionInAssistant(assistant: 'chatgpt' | 'perplexity') {
+    const text = fontSelection?.font.text;
+    if (!text) return;
+    const query = encodeURIComponent(text);
+    const url = assistant === 'chatgpt'
+      ? `https://chatgpt.com/?q=${query}`
+      : `https://www.perplexity.ai/search?q=${query}`;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      return;
+    }
   }
 
   const recentScrollHandler = useAnimatedScrollHandler({
@@ -754,8 +813,14 @@ export function BrowserScreen() {
       freezeAcknowledgement.current?.();
       return;
     }
-    if (message === 'recent-pinch-out') {
-      void minimizePageToRecentTabs();
+    if (message.startsWith('recent-pinch-progress:')) {
+      const progress = Math.max(0, Math.min(1, Number(message.slice('recent-pinch-progress:'.length))));
+      if (Number.isFinite(progress)) pageScale.value = 1 - (1 - recentCardScale) * progress;
+      return;
+    }
+    if (message.startsWith('recent-pinch-end:')) {
+      const progress = Number(message.slice('recent-pinch-end:'.length));
+      if (Number.isFinite(progress)) finishPinchToRecentTabs(progress);
       return;
     }
     if (message.startsWith('edge-pull:')) {
@@ -778,6 +843,7 @@ export function BrowserScreen() {
           label?: string;
           x?: number;
           y?: number;
+          font?: FontSelectionInfo | null;
         };
         if (payload.type === 'context-target') {
           setContextTarget({
@@ -787,6 +853,18 @@ export function BrowserScreen() {
             x: payload.x ?? screenWidth / 2,
             y: payload.y ?? screenHeight / 2,
           });
+          return;
+        }
+        if (payload.type === 'selection-font') {
+          if (payload.font) {
+            setFontSelection({
+              font: payload.font,
+              x: payload.x ?? screenWidth / 2,
+              y: payload.y ?? screenHeight / 2,
+            });
+          } else {
+            setFontSelection(null);
+          }
           return;
         }
         if (payload.type === 'page-colors') {
@@ -859,13 +937,14 @@ export function BrowserScreen() {
 
   const homePinchGesture = Gesture.Pinch()
     .onUpdate((event) => {
-      if (event.scale < 1) pageScale.value = Math.max(0.78, 1 + (event.scale - 1) * 0.68);
+      if (event.scale < 1) pageScale.value = 1 - (1 - recentCardScale) * Math.max(0, Math.min(1, (1 - event.scale) / 0.55));
     })
     .onEnd((event) => {
-      if (event.scale < 0.82) {
-        runOnJS(minimizePageToRecentTabs)();
+      const progress = Math.max(0, Math.min(1, (1 - event.scale) / 0.55));
+      if (progress >= 0.42) {
+        runOnJS(minimizePageToRecentTabs)(120);
       } else {
-        pageScale.value = withSpring(1, PAGE_SCALE_SPRING);
+        pageScale.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
       }
     });
   const homeMotion = useAnimatedStyle(() => ({
@@ -930,7 +1009,7 @@ export function BrowserScreen() {
             ref={webViewCaptureRef}
             collapsable={false}
             pointerEvents={isTabOverviewOpen ? 'none' : 'auto'}
-            style={[styles.webViewFrame, !isPreviewTransitioning && pageMotion, isTabOverviewOpen && styles.hiddenWebViewFrame, isPreviewTransitioning && styles.previewWebViewHidden]}>
+            style={[styles.webViewFrame, !isPreviewTransitioning && pageMotion, isTabOverviewOpen && !isRecentTransitioning && styles.hiddenWebViewFrame, isPreviewTransitioning && styles.previewWebViewHidden]}>
             <WebView<WebViewProps>
               key={activeTab.id}
               ref={webViewRef}
@@ -982,6 +1061,7 @@ export function BrowserScreen() {
           <View collapsable={false} style={styles.newTabGestureHost}>
             <NewTabScreen
               motionStyle={homeMotion}
+              blurTargetRef={blurTargetRef}
               recentTabs={recentTabs.slice(0, 2)}
               onOpenRecentTabs={() => setIsTabOverviewOpen(true)}
               onSelectRecentTab={selectRecentTab}
@@ -1053,7 +1133,7 @@ export function BrowserScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Open ${tabs.length} tabs`}
-              onPress={() => void showRecentTabs()}
+              onPress={() => minimizePageToRecentTabs()}
               style={({ pressed }) => [styles.pillTabs, pressed && styles.pressed]}>
               <BrowserGlyph name="panels-top-left" size={17} color={toolbarTextColor} />
               <Text style={[styles.pillTabCount, { color: toolbarTextColor }]}>{tabs.length}</Text>
@@ -1068,22 +1148,48 @@ export function BrowserScreen() {
           screenWidth={screenWidth}
           cardWidth={tabCardWidth}
           cardHeight={tabCardHeight}
+          transitioning={isRecentTransitioning}
           topInset={insets.top}
           bottomInset={insets.bottom}
           onScroll={recentScrollHandler}
           onSelect={selectRecentTab}
           onNewTab={() => openTab(null)}
           onDone={closeRecentTabs}
+          onCloseTab={closeRecentTab}
           onCloseAll={() => { setTabs([]); setActiveTabId(null); setIsTabOverviewOpen(false); }}
         />
       )}
       {contextTarget ? (
         <WebContextMenu
           target={contextTarget}
+          blurTargetRef={blurTargetRef}
           onAction={(action, menuRect) => { void handleContextAction(action, menuRect); }}
           onDismiss={() => setContextTarget(null)}
         />
       ) : null}
+      {fontSelection && !isFontInfoOpen ? (
+        <View
+          style={[styles.fontActions, {
+            left: Math.max(12, Math.min(fontSelection.x, screenWidth - 300)),
+            top: Math.max(insets.top + 8, Math.min(fontSelection.y + 8, screenHeight - 58)),
+          }]}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Ask ChatGPT about selected text" onPress={() => { void openSelectionInAssistant('chatgpt'); }} style={styles.fontAction}>
+            <Text style={styles.fontActionText}>ChatGPT</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Search selected text with Perplexity" onPress={() => { void openSelectionInAssistant('perplexity'); }} style={styles.fontAction}>
+            <Text style={styles.fontActionText}>Perplexity</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="About selected font" onPress={() => setIsFontInfoOpen(true)} style={styles.fontAction}>
+            <Text style={styles.fontActionText}>About font</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      <FontInfoSheet
+        font={fontSelection?.font ?? null}
+        isOpen={isFontInfoOpen}
+        blurTargetRef={blurTargetRef}
+        onOpenChange={setIsFontInfoOpen}
+      />
       <LinkPreviewOverlay
         uri={previewUrl}
         anchor={previewAnchor}
@@ -1093,6 +1199,7 @@ export function BrowserScreen() {
       {splitUrl ? (
         <SplitViewPane
           uri={splitUrl}
+          blurTargetRef={blurTargetRef}
           progress={splitProgress}
           size={splitSize}
           secondAtTop={secondPaneAtTop}
@@ -1119,4 +1226,7 @@ const styles = StyleSheet.create({
   pillGrip: { width: 29, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: 'transparent' },
   pillTabs: { width: 46, height: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: 23 },
   pillTabCount: { color: '#444A4F', fontSize: 11, fontWeight: '700' },
+  fontActions: { position: 'absolute', zIndex: 60, flexDirection: 'row', gap: 5, padding: 5, borderRadius: 23, backgroundColor: '#252A2E', elevation: 8, shadowColor: '#000000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 7 },
+  fontAction: { minHeight: 38, justifyContent: 'center', paddingHorizontal: 11, borderRadius: 19, backgroundColor: '#3A4147' },
+  fontActionText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
 });

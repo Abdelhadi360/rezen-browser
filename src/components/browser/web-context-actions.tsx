@@ -1,23 +1,26 @@
 import { AnimatedSquircleView } from '@pankajtime12/react-native-squircle-view';
 import MaskedView from '@react-native-masked-view/masked-view';
+import { BlurView } from 'expo-blur';
 import { Button, Popover, type PopoverTriggerRef } from 'heroui-native';
 import {
-  ArrowUpDown,
-  ArrowUpRight,
-  Columns2,
-  Copy,
-  Download,
-  Eye,
-  Layers,
-  Trash2,
-  X,
-  type LucideIcon,
+    ArrowUpDown,
+    ArrowUpRight,
+    Columns2,
+    Copy,
+    Download,
+    Eye,
+    Layers,
+    Trash2,
+    X,
+    type LucideIcon,
 } from 'lucide-react-native';
-import { useEffect, useRef, useState, type ComponentRef, type ComponentType, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ComponentRef, type ComponentType, type ReactElement, type ReactNode, type RefObject } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { Easing, FadeInDown, FadeOut, interpolate, runOnJS, useAnimatedStyle, useDerivedValue, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 import WebView from 'react-native-webview';
+
+import { useSheetAppearance } from '../../hooks/sheet-appearance';
 
 export type WebContextTarget = {
   linkUrl: string | null;
@@ -54,14 +57,18 @@ const CompatibleMaskedView = MaskedView as unknown as ComponentType<{
 
 export function WebContextMenu({
   target,
+  blurTargetRef,
   onAction,
   onDismiss,
 }: {
   target: WebContextTarget;
+  blurTargetRef: RefObject<ComponentRef<typeof View> | null>;
   onAction: (action: WebContextAction, menuRect: PreviewRect | null) => void;
   onDismiss: () => void;
 }) {
   const { width, height } = useWindowDimensions();
+  const { appearance } = useSheetAppearance();
+  const useBlur = appearance === 'blur' && Platform.OS === 'android';
   const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef<PopoverTriggerRef>(null);
   const menuSurfaceRef = useRef<ComponentRef<typeof View>>(null);
@@ -102,8 +109,19 @@ export function WebContextMenu({
             width={Math.min(290, width - 24)}
             insets={{ top: 12, right: 12, bottom: 12, left: 12 }}
             animation={{ entering: FadeInDown.duration(180), exiting: FadeOut.duration(140) }}
-            style={styles.menu}>
+            style={useBlur ? { ...styles.menu, ...styles.transparentMenu } : styles.menu}>
+            {useBlur ? (
+              <BlurView
+                blurTarget={blurTargetRef}
+                blurMethod="dimezisBlurViewSdk31Plus"
+                intensity={72}
+                tint="light"
+                pointerEvents="none"
+                style={StyleSheet.absoluteFill}
+              />
+            ) : null}
             <View
+              style={styles.popoverContent}
               ref={menuSurfaceRef}
               onLayout={() => {
                 menuSurfaceRef.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => {
@@ -237,6 +255,7 @@ export function LinkPreviewOverlay({
 
 export function SplitViewPane({
   uri,
+  blurTargetRef,
   progress,
   size,
   secondAtTop,
@@ -244,6 +263,7 @@ export function SplitViewPane({
   onClose,
 }: {
   uri: string;
+  blurTargetRef: RefObject<ComponentRef<typeof View> | null>;
   progress: SharedValue<number>;
   size: SharedValue<number>;
   secondAtTop: boolean;
@@ -276,6 +296,7 @@ export function SplitViewPane({
             isOptionsOpen={isOptionsOpen}
             setIsOptionsOpen={setIsOptionsOpen}
             triggerRef={optionsTriggerRef}
+            blurTargetRef={blurTargetRef}
             onSwapOrder={onSwapOrder}
             onClose={onClose}
           />
@@ -287,6 +308,7 @@ export function SplitViewPane({
             isOptionsOpen={isOptionsOpen}
             setIsOptionsOpen={setIsOptionsOpen}
             triggerRef={optionsTriggerRef}
+            blurTargetRef={blurTargetRef}
             onSwapOrder={onSwapOrder}
             onClose={onClose}
           />
@@ -302,6 +324,7 @@ function SplitDivider({
   isOptionsOpen,
   setIsOptionsOpen,
   triggerRef,
+  blurTargetRef,
   onSwapOrder,
   onClose,
 }: {
@@ -309,9 +332,13 @@ function SplitDivider({
   isOptionsOpen: boolean;
   setIsOptionsOpen: (open: boolean) => void;
   triggerRef: React.RefObject<PopoverTriggerRef | null>;
+  blurTargetRef: RefObject<ComponentRef<typeof View> | null>;
   onSwapOrder: () => void;
   onClose: () => void;
 }) {
+  const { appearance } = useSheetAppearance();
+  const useBlur = appearance === 'blur' && Platform.OS === 'android';
+
   return (
     <GestureDetector gesture={gesture}>
       <View collapsable={false} style={styles.splitDivider}>
@@ -323,7 +350,17 @@ function SplitDivider({
           </Popover.Trigger>
           <Popover.Portal>
             <Popover.Overlay />
-            <Popover.Content presentation="popover" placement="top" align="center" width={220} style={styles.splitOptions}>
+            <Popover.Content presentation="popover" placement="top" align="center" width={220} style={useBlur ? { ...styles.splitOptions, ...styles.transparentMenu } : styles.splitOptions}>
+              {useBlur ? (
+                <BlurView
+                  blurTarget={blurTargetRef}
+                  blurMethod="dimezisBlurViewSdk31Plus"
+                  intensity={72}
+                  tint="light"
+                  pointerEvents="none"
+                  style={StyleSheet.absoluteFill}
+                />
+              ) : null}
               <Button variant="ghost" size="sm" onPress={() => { setIsOptionsOpen(false); onSwapOrder(); }} style={styles.optionButton}>
                 <ArrowUpDown size={17} color="#373D42" />
                 <Button.Label>Swap pane order</Button.Label>
@@ -344,6 +381,8 @@ const styles = StyleSheet.create({
   menuLayer: { ...StyleSheet.absoluteFill, zIndex: 50 },
   contextAnchor: { position: 'absolute', width: 2, height: 2, backgroundColor: 'transparent' },
   menu: { overflow: 'hidden', borderRadius: 20, borderCurve: 'continuous', backgroundColor: '#FFFFFF' },
+  transparentMenu: { backgroundColor: 'transparent' },
+  popoverContent: { zIndex: 1 },
   targetLabel: { paddingHorizontal: 15, paddingTop: 13, paddingBottom: 8, color: '#80868B', fontSize: 12 },
   menuItem: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 12, paddingHorizontal: 14, borderRadius: 9 },
   menuText: { color: '#30363B', fontSize: 14, fontWeight: '500' },

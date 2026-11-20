@@ -3,12 +3,12 @@ import { Button } from 'heroui-native';
 import { useEffect, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useFrameCallback,
-  useSharedValue,
-  withDelay,
-  withTiming,
+    Easing,
+    useAnimatedStyle,
+    useFrameCallback,
+    useSharedValue,
+    withDelay,
+    withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -16,23 +16,32 @@ import { MeshGradientView } from '../../../modules/mesh-gradient/src';
 
 const ONBOARDING_KEY = 'rezen.onboarding.completed.v1';
 const INTRO_COLORS = [
-  '#FFFFFF', '#F3F4FF', '#FFFFFF',
-  '#8299F5', '#ECEEFF', '#C9C8FA',
-  '#9BAAF8', '#C8CBFF', '#E6E3FF',
+  '#FFF7E9', '#FFF4E8', '#FFF7E9',
+  '#4169FF', '#FF4778', '#FF597C',
+  '#315FF5', '#FF806D', '#FFF7E9',
 ];
 const DEFAULT_COLORS = [
-  '#FFFFFF', '#F7F7FF', '#FFFFFF',
-  '#98A9F8', '#EEF0FF', '#D3D0FC',
-  '#BEC9FF', '#DADDFE', '#F0EDFF',
+  '#FFF7E9', '#FFF6EA', '#FFF7E9',
+  '#315FF5', '#FB4778', '#FF617D',
+  '#315FF5', '#FF806D', '#FFF7E9',
 ];
 const DEFAULT_POINTS = [
-  [0, 0], [0.7, 0], [1, 0],
-  [0, 0.5], [0.5, 0.5], [1, 0.5],
-  [0, 1], [0.5, 1], [1, 1],
+  [0.02, 0.02], [0.7, 0.02], [0.98, 0.02],
+  [0.02, 0.5], [0.5, 0.5], [0.98, 0.5],
+  [0.02, 0.98], [0.5, 0.98], [0.98, 0.98],
+];
+const POINT_MOTION = [
+  [0.012, 0.012], [0.018, 0.012], [0.012, 0.012],
+  [0.012, 0.018], [0.035, 0.035], [0.012, 0.018],
+  [0.012, 0.012], [0.018, 0.012], [0.012, 0.012],
 ];
 const TRANSITION_DELAY_MS = 350;
 const TRANSITION_DURATION_MS = 8200;
 const START_REVEAL_DELAY_MS = 9600;
+const MOTION_DECAY_MS = 6000;
+const MOTION_INITIAL_SPEED = 7;
+const MOTION_CRUISE_SPEED = 1.15;
+const MOTION_PERIOD_MS = 12000;
 
 export function OnboardingScreen({ onFinish }: { onFinish: () => void }) {
   const insets = useSafeAreaInsets();
@@ -48,8 +57,9 @@ export function OnboardingScreen({ onFinish }: { onFinish: () => void }) {
   useFrameCallback((frame) => {
     if (frame.timeSincePreviousFrame !== null) {
       elapsedMotion.value += frame.timeSincePreviousFrame;
-      const speed = 1 + 1.9 * Math.exp(-elapsedMotion.value / 1800);
-      meshPhase.value += (frame.timeSincePreviousFrame / 18000) * Math.PI * 2 * speed;
+      const speed = MOTION_CRUISE_SPEED
+        + (MOTION_INITIAL_SPEED - MOTION_CRUISE_SPEED) * Math.exp(-elapsedMotion.value / MOTION_DECAY_MS);
+      meshPhase.value += (frame.timeSincePreviousFrame / MOTION_PERIOD_MS) * Math.PI * 2 * speed;
     }
   });
 
@@ -65,26 +75,13 @@ export function OnboardingScreen({ onFinish }: { onFinish: () => void }) {
       const elapsed = Date.now() - startedAt;
       const progress = clamp01((elapsed - TRANSITION_DELAY_MS) / TRANSITION_DURATION_MS);
       const transition = easeOutCubic(progress);
-      const phase = ((elapsed + 1900 * (1 - Math.exp(-elapsed / 1500))) / 14500) * Math.PI * 2;
-      const sideMotion = 0.045 + 0.018 * Math.exp(-elapsed / 2200);
-
-      setMeshPoints([
-        DEFAULT_POINTS[0],
-        DEFAULT_POINTS[1],
-        [1 - Math.cos(phase + 0.4) * sideMotion, Math.sin(phase + 0.4) * sideMotion],
-        DEFAULT_POINTS[3],
-        DEFAULT_POINTS[4],
-        [1 - Math.cos(phase + 2.1) * sideMotion, 0.5 + Math.sin(phase + 2.1) * sideMotion],
-        DEFAULT_POINTS[6],
-        DEFAULT_POINTS[7],
-        [1 - Math.cos(phase + 3.8) * sideMotion, 1 + Math.sin(phase + 3.8) * sideMotion],
-      ]);
-
-      if (progress === 1) {
-        setMeshColors(DEFAULT_COLORS);
-      } else {
-        setMeshColors(INTRO_COLORS.map((color, index) => blendColor(color, DEFAULT_COLORS[index], transition)));
-      }
+      const accumulatedMotion = MOTION_CRUISE_SPEED * elapsed
+        + (MOTION_INITIAL_SPEED - MOTION_CRUISE_SPEED) * MOTION_DECAY_MS
+          * (1 - Math.exp(-elapsed / MOTION_DECAY_MS));
+      const phase = (accumulatedMotion / MOTION_PERIOD_MS) * Math.PI * 2;
+      setMeshPoints(DEFAULT_POINTS.map((point, index) => animateMeshPoint(point, POINT_MOTION[index], index, phase)));
+      const baseColors = INTRO_COLORS.map((color, index) => blendColor(color, DEFAULT_COLORS[index], transition));
+      setMeshColors(shiftMeshColors(baseColors, phase));
 
       frameId = requestAnimationFrame(animateMesh);
     };
@@ -107,10 +104,10 @@ export function OnboardingScreen({ onFinish }: { onFinish: () => void }) {
 
     return {
       transform: [
-        { translateX: Math.sin(phase) * width * (0.009 + (1 - zoomProgress) * 0.055) },
-        { translateY: Math.cos(phase * 0.8) * height * (0.009 + (1 - zoomProgress) * 0.05) },
-        { rotate: `${Math.sin(phase * 0.52) * (0.24 + (1 - zoomProgress) * 2.8)}deg` },
-        { scale: 1.04 + (1 - zoomProgress) * 0.58 + Math.sin(phase * 0.7) * 0.006 },
+        { translateX: Math.sin(phase) * width * (0.04 + (1 - zoomProgress) * 0.055) },
+        { translateY: Math.cos(phase * 0.8) * height * (0.035 + (1 - zoomProgress) * 0.05) },
+        { rotate: `${Math.sin(phase * 0.52) * (1.2 + (1 - zoomProgress) * 2.8)}deg` },
+        { scale: 1.16 + (1 - zoomProgress) * 0.35 + Math.sin(phase * 0.7) * 0.02 },
       ],
     };
   }, [height, width]);
@@ -156,8 +153,8 @@ export function OnboardingScreen({ onFinish }: { onFinish: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, overflow: 'hidden', backgroundColor: '#FFFFFF' },
-  meshReveal: { position: 'absolute', overflow: 'hidden', backgroundColor: '#FFFFFF' },
+  root: { flex: 1, overflow: 'hidden', backgroundColor: '#FFF7E9' },
+  meshReveal: { position: 'absolute', overflow: 'hidden', backgroundColor: '#FFF7E9' },
   startButtonWrap: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 28 },
   startButton: {
     width: '100%',
@@ -186,4 +183,46 @@ function blendColor(from: string, to: string, progress: number) {
   const toChannels = [1, 3, 5].map((index) => Number.parseInt(to.slice(index, index + 2), 16));
   const channels = fromChannels.map((channel, index) => Math.round(channel + (toChannels[index] - channel) * progress));
   return `#${channels.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function animateMeshPoint(point: number[], motion: number[], index: number, phase: number) {
+  const [xMotion, yMotion] = motion;
+  const x = point[0] + Math.sin(phase + index * 1.73) * xMotion;
+  const y = point[1] + Math.cos(phase * 0.83 + index * 2.11) * yMotion;
+  return [clamp(x, 0.005, 0.995), clamp(y, 0.005, 0.995)];
+}
+
+function shiftMeshColors(colors: string[], phase: number) {
+  const offsetX = Math.sin(phase) * 0.38;
+  const offsetY = Math.cos(phase * 0.73 + 1.4) * 0.32;
+
+  return colors.map((_, index) => {
+    const column = index % 3;
+    const row = Math.floor(index / 3);
+    const x = smoothReflect(column / 2 + offsetX);
+    const y = smoothReflect(row / 2 + offsetY);
+    return sampleMeshColor(colors, x, y);
+  });
+}
+
+function smoothReflect(value: number) {
+  const wrapped = ((value % 2) + 2) % 2;
+  const reflected = wrapped <= 1 ? wrapped : 2 - wrapped;
+  return reflected * reflected * (3 - 2 * reflected);
+}
+
+function sampleMeshColor(colors: string[], x: number, y: number) {
+  const gridX = x * 2;
+  const gridY = y * 2;
+  const column = Math.min(Math.floor(gridX), 1);
+  const row = Math.min(Math.floor(gridY), 1);
+  const localX = gridX - column;
+  const localY = gridY - row;
+  const top = blendColor(colors[row * 3 + column], colors[row * 3 + column + 1], localX);
+  const bottom = blendColor(colors[(row + 1) * 3 + column], colors[(row + 1) * 3 + column + 1], localX);
+  return blendColor(top, bottom, localY);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
