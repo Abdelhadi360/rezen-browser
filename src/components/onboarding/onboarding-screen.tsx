@@ -13,8 +13,8 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MeshGradientView } from '../../../modules/mesh-gradient/src';
+import { ONBOARDING_COMPLETED_KEY } from '@/constants/onboarding';
 
-const ONBOARDING_KEY = 'rezen.onboarding.completed.v1';
 const INTRO_COLORS = [
   '#FFF7E9', '#FFF4E8', '#FFF7E9',
   '#4169FF', '#FF4778', '#FF597C',
@@ -118,7 +118,7 @@ export function OnboardingScreen({ onFinish }: { onFinish: () => void }) {
   }));
 
   async function finishOnboarding() {
-    await AsyncStorage.setItem(ONBOARDING_KEY, 'true').catch(() => undefined);
+    await AsyncStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true').catch(() => undefined);
     onFinish();
   }
 
