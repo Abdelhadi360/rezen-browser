@@ -2,11 +2,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurTargetView } from 'expo-blur';
 import * as Clipboard from 'expo-clipboard';
 import { File, Paths } from 'expo-file-system';
+import * as IntentLauncher from 'expo-intent-launcher';
 import * as Sharing from 'expo-sharing';
 import { type PopoverTriggerRef } from 'heroui-native';
 import type { ComponentRef } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import {
+    BackHandler,
     Keyboard,
     Linking,
     Platform,
@@ -21,7 +23,6 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
     Easing,
     runOnJS,
-    useAnimatedScrollHandler,
     useAnimatedStyle,
     useSharedValue,
     withSpring,
@@ -484,7 +485,6 @@ export function BrowserScreen() {
   const isDockDragging = useSharedValue(false);
   const pageScale = useSharedValue(1);
   const edgePull = useSharedValue(0);
-  const recentScrollX = useSharedValue(0);
   const splitProgress = useSharedValue(0);
   const splitSize = useSharedValue(0.48);
   const captureSequence = useRef(0);
@@ -675,8 +675,58 @@ export function BrowserScreen() {
     setIsTabOverviewOpen(false);
     setIsRecentTransitioning(false);
     setChromeVisible(true);
-    recentScrollX.value = 0;
   }
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (contextTarget) {
+        setContextTarget(null);
+        return true;
+      }
+      if (isFontInfoOpen) {
+        setIsFontInfoOpen(false);
+        return true;
+      }
+      if (isOverflowOpen) {
+        setIsOverflowOpen(false);
+        return true;
+      }
+      if (isProviderPopoverOpen) {
+        setIsProviderPopoverOpen(false);
+        return true;
+      }
+      if (previewUrl) {
+        setPreviewUrl(null);
+        setPreviewAnchor(null);
+        setPreviewSourceRect(null);
+        return true;
+      }
+      if (isTabOverviewOpen) {
+        webViewRef.current?.injectJavaScript(resumePageScript);
+        setIsPreviewTransitioning(false);
+        setTransitionPreview(null);
+        isOpeningOverview.current = false;
+        setIsTabOverviewOpen(false);
+        setIsRecentTransitioning(false);
+        setChromeVisible(true);
+        return true;
+      }
+      if (isEditingAddress) {
+        Keyboard.dismiss();
+        setIsEditingAddress(false);
+        return true;
+      }
+      if (canGoBack) {
+        webViewRef.current?.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => subscription.remove();
+  }, [canGoBack, contextTarget, isEditingAddress, isFontInfoOpen, isOverflowOpen, isProviderPopoverOpen, isTabOverviewOpen, previewUrl]);
 
   function minimizePageToRecentTabs(duration = 260) {
     if (isOpeningOverview.current || isTabOverviewOpen) return;
@@ -687,7 +737,6 @@ export function BrowserScreen() {
     setTransitionPreview(null);
     setIsRecentTransitioning(true);
     setIsTabOverviewOpen(true);
-    recentScrollX.value = 0;
     isOpeningOverview.current = false;
     pageScale.value = withTiming(recentCardScale, { duration, easing: Easing.out(Easing.cubic) }, (finished) => {
       if (finished) runOnJS(setIsRecentTransitioning)(false);
@@ -720,8 +769,8 @@ export function BrowserScreen() {
     if (tabId === activeTabId) setActiveTabId(remainingTabs[0]?.id ?? null);
   }
 
-  async function openSelectionInAssistant(assistant: 'chatgpt' | 'perplexity') {
-    const text = fontSelection?.font.text;
+  async function openSelectionInAssistant(assistant: 'chatgpt' | 'perplexity', selectedText?: string) {
+    const text = selectedText ?? fontSelection?.font.text ?? '';
     if (!text) return;
     const query = encodeURIComponent(text);
     const url = assistant === 'chatgpt'
@@ -734,11 +783,30 @@ export function BrowserScreen() {
     }
   }
 
-  const recentScrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      recentScrollX.value = event.contentOffset.x;
-    },
-  });
+  async function translateSelectedText(selectedText: string) {
+    if (!selectedText) return;
+    try {
+      await IntentLauncher.startActivityAsync('android.intent.action.TRANSLATE', {
+        extra: { 'android.intent.extra.TEXT': selectedText },
+      });
+    } catch {
+      const url = `https://translate.google.com/?text=${encodeURIComponent(selectedText)}&op=translate`;
+      await Linking.openURL(url).catch(() => undefined);
+    }
+  }
+
+  function openSelectedTextAssistant(assistant: 'chatgpt' | 'claude' | 'perplexity', selectedText: string) {
+    if (assistant === 'claude') {
+      const url = `https://claude.ai/new?q=${encodeURIComponent(selectedText)}`;
+      void Linking.openURL(url).catch(() => undefined);
+      return;
+    }
+    void openSelectionInAssistant(assistant, selectedText);
+  }
+
+  function selectAllPageText() {
+    webViewRef.current?.injectJavaScript(`(function(){var selection=window.getSelection();if(selection){selection.removeAllRanges();selection.selectAllChildren(document.body);}})();true;`);
+  }
 
   async function submitAddress(value = addressDraft) {
     const url = selectedProvider
@@ -804,7 +872,7 @@ export function BrowserScreen() {
   }
 
   function handleWebMessage(event: WebViewMessageEvent) {
-    const message = event.nativeEvent.data;
+    const message = event.nativeEvent.data ?? '';
     if (message.startsWith('page-frozen:')) {
       const scrollY = Number(message.slice('page-frozen:'.length));
       if (activeTab && Number.isFinite(scrollY)) {
@@ -1039,6 +1107,35 @@ export function BrowserScreen() {
               onMessage={handleWebMessage}
               injectedJavaScriptBeforeContentLoaded={safeAreaScript}
               injectedJavaScript={scrollScript}
+              menuItems={Platform.OS === 'android' ? [
+                { key: 'select-all', label: 'Select All' },
+                { key: 'copy', label: 'Copy' },
+                { key: 'translate', label: 'Translate' },
+                { key: 'about-font', label: 'About Font' },
+                { key: 'chatgpt', label: 'ChatGPT' },
+                { key: 'claude', label: 'Claude' },
+                { key: 'perplexity', label: 'Perplexity' },
+              ] : undefined}
+              onCustomMenuSelection={({ nativeEvent }) => {
+                if (nativeEvent.key === 'select-all') {
+                  selectAllPageText();
+                } else if (nativeEvent.key === 'copy') {
+                  void Clipboard.setStringAsync(nativeEvent.selectedText);
+                } else if (nativeEvent.key === 'translate') {
+                  void translateSelectedText(nativeEvent.selectedText);
+                } else if (nativeEvent.key === 'chatgpt' || nativeEvent.key === 'claude' || nativeEvent.key === 'perplexity') {
+                  openSelectedTextAssistant(nativeEvent.key, nativeEvent.selectedText);
+                } else if (nativeEvent.key === 'about-font') {
+                  setFontSelection((current) => current
+                    ? { ...current, font: { ...current.font, text: nativeEvent.selectedText } }
+                    : {
+                        font: { family: 'Unknown', weight: '400', style: 'normal', text: nativeEvent.selectedText, variants: [] },
+                        x: screenWidth / 2,
+                        y: screenHeight / 2,
+                      });
+                  setIsFontInfoOpen(true);
+                }
+              }}
               javaScriptEnabled
               domStorageEnabled
               allowsBackForwardNavigationGestures
@@ -1151,7 +1248,6 @@ export function BrowserScreen() {
           transitioning={isRecentTransitioning}
           topInset={insets.top}
           bottomInset={insets.bottom}
-          onScroll={recentScrollHandler}
           onSelect={selectRecentTab}
           onNewTab={() => openTab(null)}
           onDone={closeRecentTabs}
@@ -1167,12 +1263,13 @@ export function BrowserScreen() {
           onDismiss={() => setContextTarget(null)}
         />
       ) : null}
-      {fontSelection && !isFontInfoOpen ? (
+      {Platform.OS !== 'android' && fontSelection && !isFontInfoOpen ? (
         <View
           style={[styles.fontActions, {
             left: Math.max(12, Math.min(fontSelection.x, screenWidth - 300)),
             top: Math.max(insets.top + 8, Math.min(fontSelection.y + 8, screenHeight - 58)),
-          }]}>
+          }]}
+        >
           <Pressable accessibilityRole="button" accessibilityLabel="Ask ChatGPT about selected text" onPress={() => { void openSelectionInAssistant('chatgpt'); }} style={styles.fontAction}>
             <Text style={styles.fontActionText}>ChatGPT</Text>
           </Pressable>
@@ -1213,7 +1310,7 @@ export function BrowserScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#FFFFFF' },
-  recentsCanvas: { backgroundColor: '#F2F3F4' },
+  recentsCanvas: { backgroundColor: 'transparent' },
   webViewTrack: { ...StyleSheet.absoluteFill, backgroundColor: 'transparent' },
   webViewFrame: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF' },
   hiddenWebViewFrame: { opacity: 0 },

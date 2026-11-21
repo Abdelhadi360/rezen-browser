@@ -1,0 +1,25 @@
+diff --git a/node_modules/react-native-webview/src/RNCWebViewNativeComponent.ts b/node_modules/react-native-webview/src/RNCWebViewNativeComponent.ts
+index ca3af15..3051c6d 100644
+--- a/node_modules/react-native-webview/src/RNCWebViewNativeComponent.ts
++++ b/node_modules/react-native-webview/src/RNCWebViewNativeComponent.ts
+@@ -163,6 +163,9 @@ export interface NativeProps extends ViewProps {
+   hasOnScroll?: boolean;
+   // !Android only
+
++  onCustomMenuSelection?: DirectEventHandler<WebViewCustomMenuSelectionEvent>;
++  menuItems?: ReadonlyArray<Readonly<{ label: string; key: string }>>;
++
+   // iOS only
+   allowingReadAccessToURL?: string;
+   allowsBackForwardNavigationGestures?: boolean;
+@@ -217,10 +220,8 @@ export interface NativeProps extends ViewProps {
+   textInteractionEnabled?: WithDefault<boolean, true>;
+   useSharedProcessPool?: WithDefault<boolean, true>;
+   onContentProcessDidTerminate?: DirectEventHandler<WebViewNativeEvent>;
+-  onCustomMenuSelection?: DirectEventHandler<WebViewCustomMenuSelectionEvent>;
+   onFileDownload?: DirectEventHandler<WebViewDownloadEvent>;
+
+-  menuItems?: ReadonlyArray<Readonly<{ label: string; key: string }>>;
+   suppressMenuItems?: Readonly<string>[];
+   // Workaround to watch if listener if defined
+   hasOnFileDownload?: boolean;
