@@ -127,6 +127,7 @@ const resumePageScript = `
 const scrollScript = `
   (function() {
     var settleTimer;
+    var isScrolling = false;
     var lastTouchY = 0;
     var edgePull = 0;
     var activeEdge = '';
@@ -186,9 +187,13 @@ const scrollScript = `
       window.ReactNativeWebView.postMessage('edge-pull:' + edgePull);
     }
     window.addEventListener('scroll', function() {
-      window.ReactNativeWebView.postMessage('scrolling');
+      if (!isScrolling) {
+        isScrolling = true;
+        window.ReactNativeWebView.postMessage('scrolling');
+      }
       clearTimeout(settleTimer);
       settleTimer = setTimeout(function() {
+        isScrolling = false;
         window.ReactNativeWebView.postMessage('scroll-idle');
       }, 640);
     }, { passive: true });
@@ -376,7 +381,15 @@ const scrollScript = `
       releasePull();
     }, { passive: true });
     pageColor();
-    var observer = new MutationObserver(pageColor);
+    var colorTimer = null;
+    function schedulePageColor() {
+      if (colorTimer) clearTimeout(colorTimer);
+      colorTimer = setTimeout(function() {
+        colorTimer = null;
+        pageColor();
+      }, 250);
+    }
+    var observer = new MutationObserver(schedulePageColor);
     observer.observe(document.head || document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['content'] });
     observer.observe(document.body || document.documentElement, { subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
   })();
@@ -603,7 +616,10 @@ export function BrowserScreen() {
 
   useEffect(() => {
     if (!isReady) return;
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ tabs, activeTabId })).catch(() => undefined);
+    const timer = setTimeout(() => {
+      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ tabs, activeTabId })).catch(() => undefined);
+    }, 500);
+    return () => clearTimeout(timer);
   }, [activeTabId, isReady, tabs]);
 
   useEffect(() => {
@@ -836,13 +852,16 @@ export function BrowserScreen() {
   }
 
   function handleNavigationChange(state: WebViewNavigation) {
-    setCanGoBack(state.canGoBack);
-    setCanGoForward(state.canGoForward);
+    setCanGoBack((current) => current === state.canGoBack ? current : state.canGoBack);
+    setCanGoForward((current) => current === state.canGoForward ? current : state.canGoForward);
     if (state.url && state.url !== 'about:blank' && activeTab) {
-      setAddressDraft(state.url);
-      setTabs((current) => current.map((tab) => tab.id === activeTab.id
-        ? { ...tab, url: state.url, title: state.title || getDomain(state.url) }
-        : tab));
+      const nextTitle = state.title || getDomain(state.url);
+      setAddressDraft((current) => current === state.url ? current : state.url);
+      setTabs((current) => current.map((tab) => {
+        if (tab.id !== activeTab.id) return tab;
+        if (tab.url === state.url && tab.title === nextTitle) return tab;
+        return { ...tab, url: state.url, title: nextTitle };
+      }));
     }
   }
 
@@ -952,7 +971,6 @@ export function BrowserScreen() {
     if (event.nativeEvent.data === 'scrolling') setChromeVisible(false);
     if (message === 'scroll-idle') {
       setChromeVisible(true);
-      void captureCurrentTab();
     }
   }
 
@@ -1067,7 +1085,7 @@ export function BrowserScreen() {
     transform: [{ scale: withSpring(isDockDragging.value ? 1.035 : 1, { damping: 16, stiffness: 210 }) }],
     opacity: withTiming(chromeVisible && !isTabOverviewOpen ? 1 : 0, { duration: chromeVisible && !isTabOverviewOpen ? 240 : 180 }),
   }));
-  const safeAreaScript = `(function(){var inset=${Platform.OS === 'android' ? insets.top : 0};function apply(){if(!document.body)return false;var body=document.body;var current=parseFloat(window.getComputedStyle(body).paddingTop)||0;body.style.paddingTop=Math.max(current,inset)+'px';document.documentElement.style.setProperty('--thermal-safe-area-top',inset+'px');return true;}if(!apply()){var timer=setInterval(function(){if(apply())clearInterval(timer);},16);setTimeout(function(){clearInterval(timer);},3000);}})();true;`;
+  const safeAreaScript = `(function(){var inset=${Platform.OS === 'android' ? insets.top : 0};function apply(){if(!document.body)return false;var body=document.body;var current=parseFloat(window.getComputedStyle(body).paddingTop)||0;body.style.paddingTop=Math.max(current,inset)+'px';document.documentElement.style.setProperty('--thermal-safe-area-top',inset+'px');return true;}if(!apply()){var timer=setInterval(function(){if(apply())clearInterval(timer);},250);setTimeout(function(){clearInterval(timer);},3000);}})();true;`;
 
   return (
     <BlurTargetView ref={blurTargetRef} style={[styles.root, isTabOverviewOpen && styles.recentsCanvas]}>
@@ -1083,7 +1101,6 @@ export function BrowserScreen() {
               ref={webViewRef}
               source={{ uri: activeTab.url }}
               style={styles.webView}
-              androidLayerType={Platform.OS === 'android' ? 'software' : undefined}
               onNavigationStateChange={handleNavigationChange}
               onLoadStart={() => {
                 setIsLoading(true);
