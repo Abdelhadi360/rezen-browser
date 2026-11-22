@@ -70,7 +70,8 @@ function makeWebsiteColorScript(backgroundColor: string | null, textColor: strin
   })();true;`;
 }
 
-const freezePageScript = `
+function makeFreezePageScript(tabId: string) {
+  return `
   (function() {
     var state = window.__thermalPausedPageState || { media: [], animations: [], observer: null };
     state.media = [];
@@ -101,10 +102,11 @@ const freezePageScript = `
     state.observer.observe(document.documentElement, { childList: true, subtree: true });
     window.__thermalPausedPageState = state;
     var root = document.scrollingElement || document.documentElement;
-    window.ReactNativeWebView.postMessage('page-frozen:' + root.scrollTop);
+    window.ReactNativeWebView.postMessage('page-frozen:' + ${JSON.stringify(tabId)} + ':' + root.scrollTop);
   })();
   true;
 `;
+}
 
 const resumePageScript = `
   (function() {
@@ -286,7 +288,7 @@ const scrollScript = `
       contextStart = { x: event.touches[0].clientX, y: event.touches[0].clientY, target: target };
       contextTimer = setTimeout(function() {
         if (contextStart) sendContextTarget({ clientX: contextStart.x, clientY: contextStart.y }, contextStart.target);
-      }, 560);
+      }, 450);
     }, { passive: true, capture: true });
     document.addEventListener('touchmove', function(event) {
       if (!contextStart || !event.touches.length) return;
@@ -678,6 +680,11 @@ export function BrowserScreen() {
   }
 
   function finishTabSelection(tabId: string) {
+    webViewRef.current?.injectJavaScript(resumePageScript);
+    homeAddressInputRef.current?.blur();
+    dockAddressInputRef.current?.blur();
+    Keyboard.dismiss();
+    setIsEditingAddress(false);
     setActiveTabId(tabId);
     setIsTabOverviewOpen(false);
     setChromeVisible(true);
@@ -747,7 +754,10 @@ export function BrowserScreen() {
   function minimizePageToRecentTabs(duration = 260) {
     if (isOpeningOverview.current || isTabOverviewOpen) return;
     isOpeningOverview.current = true;
+    if (activeTabId) webViewRef.current?.injectJavaScript(makeFreezePageScript(activeTabId));
     Keyboard.dismiss();
+    homeAddressInputRef.current?.blur();
+    dockAddressInputRef.current?.blur();
     setChromeVisible(false);
     setIsPreviewTransitioning(false);
     setTransitionPreview(null);
@@ -831,7 +841,9 @@ export function BrowserScreen() {
     if (!url) return;
     if (activeTab) {
       await captureCurrentTab(activeTab.id);
-      setTabs((current) => current.map((tab) => tab.id === activeTab.id ? { ...tab, title: getDomain(url), url } : tab));
+      setTabs((current) => current.map((tab) => tab.id === activeTab.id
+        ? { ...tab, title: getDomain(url), url, scrollY: 0 }
+        : tab));
     } else {
       openTab(url);
     }
@@ -860,7 +872,7 @@ export function BrowserScreen() {
       setTabs((current) => current.map((tab) => {
         if (tab.id !== activeTab.id) return tab;
         if (tab.url === state.url && tab.title === nextTitle) return tab;
-        return { ...tab, url: state.url, title: nextTitle };
+        return { ...tab, url: state.url, title: nextTitle, scrollY: tab.url === state.url ? tab.scrollY : 0 };
       }));
     }
   }
@@ -893,9 +905,10 @@ export function BrowserScreen() {
   function handleWebMessage(event: WebViewMessageEvent) {
     const message = event.nativeEvent.data ?? '';
     if (message.startsWith('page-frozen:')) {
-      const scrollY = Number(message.slice('page-frozen:'.length));
-      if (activeTab && Number.isFinite(scrollY)) {
-        setTabs((current) => current.map((tab) => tab.id === activeTab.id ? { ...tab, scrollY } : tab));
+      const [tabId, scrollYValue] = message.slice('page-frozen:'.length).split(':');
+      const scrollY = Number(scrollYValue);
+      if (tabId && Number.isFinite(scrollY)) {
+        setTabs((current) => current.map((tab) => tab.id === tabId ? { ...tab, scrollY } : tab));
       }
       freezeAcknowledgement.current?.();
       return;
@@ -1114,7 +1127,9 @@ export function BrowserScreen() {
                   activeTab.websiteTextColor ?? null,
                 ));
                 const scrollY = Math.max(0, activeTab.scrollY ?? 0);
-                webViewRef.current?.injectJavaScript(`(function(){var target=${scrollY};var attempts=0;function restore(){var root=document.scrollingElement||document.documentElement;root.scrollTop=target;window.scrollTo(0,target);attempts+=1;if(root.scrollTop<target&&attempts<12)setTimeout(restore,150);}restore();})();true;`);
+                if (scrollY > 0) {
+                  webViewRef.current?.injectJavaScript(`(function(){var target=${scrollY};var attempts=0;var timer=null;var cancelled=false;var root=document.scrollingElement||document.documentElement;function cancel(){cancelled=true;if(timer)clearTimeout(timer);window.removeEventListener('touchstart',cancel,true);window.removeEventListener('wheel',cancel,true);}function restore(){if(cancelled)return;root.scrollTop=target;window.scrollTo(0,target);attempts+=1;if(root.scrollTop>=target||attempts>=12)cancel();else timer=setTimeout(restore,150);}window.addEventListener('touchstart',cancel,true);window.addEventListener('wheel',cancel,true);requestAnimationFrame(function(){requestAnimationFrame(restore);});})();true;`);
+                }
                 setTimeout(() => void captureCurrentTab(activeTab.id), 700);
               }}
               onError={() => {
